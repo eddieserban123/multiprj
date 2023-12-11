@@ -7,10 +7,10 @@ stages:
   - gitops
 
 variables:
-  MAVEN_IMAGE: registry.devops.mercuria.systems/gitlab/devops/mercuria-maven:3.8.4-3_jdk17
+  MAVEN_IMAGE: not shown security reason
   MAVEN_OPTS: "-Dbuildtime.output.log=true -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -XX:+UnlockExperimentalVMOptions -XX:+UseContainerSupport"
-  IMAGE_REPOSITORY: registry.devops.mercuria.systems/gitlab/finance/multiprj
-  DOCKER_REGISTRY: registry.devops.mercuria.systems/gitlab
+  IMAGE_REPOSITORY: not shown security reason
+  DOCKER_REGISTRY: not shown security reason
   ANSIBLE_FORCE_COLOR: "true"
 
 before_script:
