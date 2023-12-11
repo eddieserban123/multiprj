@@ -1,0 +1,118 @@
+- name: Build Manifest
+  hosts: localhost
+  gather_facts: yes
+
+  vars:
+    ansible_connection: local
+    destdir: kubernetes-manifest
+
+  tasks:
+    # Determine whether being invoked on GitLab CI or locally
+    - name: Determine whether this is being run on gitlab
+      set_fact:
+        gitlab_ci: "{{ lookup('env', 'GITLAB_CI') | default(False, True ) }}"
+
+    - name: Set namespace defaults
+      set_fact:
+        tls_secret: "{{ lookup('env', 'TLS_SECRET') | default('default-tls', True ) }}"
+        namespace_name: "{{ lookup('env', 'NAMESPACE_NAME') | default('finance-multiprj', True) }}"
+
+    # Set annotations dependent on whether invoked on GitLab CI or locally
+    - name: Set annotation facts - gitlab-ci
+      when: gitlab_ci == True
+      set_fact:
+        ci_environment_name: "{{ lookup('env', 'CI_ENVIRONMENT_NAME') | default('dev', True ) }}"
+        ci_project_name: "{{ lookup('env', 'CI_PROJECT_NAME') | default('credit-engine', True ) }}"
+        ci_commit_ref_slug: "{{ lookup('env', 'CI_COMMIT_REF_SLUG') | default('unset', True ) }}"
+        ci_commit_ref_name: "{{ lookup('env', 'CI_COMMIT_REF_NAME') | default('unset', True ) }}"
+        ci_commit_short_sha: "{{ lookup('env', 'CI_COMMIT_SHORT_SHA') | default('unset', True ) }}"
+        ci_commit_tag: "{{ lookup('env', 'CI_COMMIT_TAG') | default('unset', True ) }}"
+        ci_project_path_slug: "{{ lookup('env', 'CI_PROJECT_PATH_SLUG') | default('unset', True ) }}"
+        ci_project_dir: "{{ lookup('env', 'CI_PROJECT_DIR') | default('unset', True ) }}"
+        gitlab_user_id: "{{ lookup('env', 'GITLAB_USER_ID') | default('unset', True ) }}"
+        sentry_release: "{{ lookup('env', 'SENTRY_RELEASE') | default('unset', True ) }}"
+        sentry_auth_token: "{{ lookup('env', 'SENTRY_AUTH_TOKEN') | default('unset', True ) }}"
+
+    - name: Set annotation facts
+      when: gitlab_ci == False
+      set_fact:
+        ci_environment_name: "{{ ansible_nodename | lower}}"
+        ci_project_name: "ansible-deploy-demo"
+        ci_commit_ref_slug: "{{ ansible_nodename | lower }}"
+        ci_commit_ref_name: "{{ ansible_nodename | lower }}"
+        ci_commit_short_sha: "{{ ansible_nodename | lower }}"
+        ci_commit_tag: "{{ ansible_nodename | lower }}"
+        ci_project_path_slug: "{{ ansible_nodename | lower }}"
+        ci_project_dir: "../"
+        gitlab_user_id: "{{ ansible_user_id | lower }}"
+        sentry_release: ""
+        sentry_auth_token: ""
+
+    # Define the prefix
+    - name: Set prefix to ci_commit_ref_slug if set or default to dev
+      set_fact:
+        prefix: "{{ ci_commit_ref_slug }}-{{ ci_project_name }}"
+
+    # On GitLab CI - override the prefix
+    - name: Prefix overrides on gitlab
+      when: gitlab_ci == True
+      block:
+        - name: Set prefix just the app name for non-review
+          set_fact:
+            prefix: "{{ ci_project_name }}"
+          when: ci_environment_name == "dev" or ci_environment_name == "uat" or ci_environment_name == "prd"
+
+    # In review it's handy to have the closest environment:
+    - name: Set closest physical environment
+      block:
+        - name: Set closest physical environment
+          set_fact:
+            ci_closest_physical_environment: "{{ ci_environment_name }}"
+        - name: Set closest physical environment for review
+          set_fact:
+            ci_closest_physical_environment: dev
+          when: ci_environment_name.startswith("review")
+
+    # Set Image tag based on ci_commit_ref_name
+    - name: Set image_tag to ci_commit_ref_name if set
+      set_fact:
+        image_tag: "{{ ci_commit_ref_name }}"
+
+    # Debug facts to console
+    - name: Facts
+      debug:
+        msg:
+          - "namespace_name: {{ namespace_name }}"
+          - "prefix: {{ prefix }}"
+          - "environment_name: {{ ci_environment_name }}"
+          - "project_name: {{ ci_project_name }}"
+          - "image_tag: {{ image_tag }}"
+          - "tls_secret: {{ tls_secret }}"
+
+    - name: Prep staging
+      block:
+        - file:
+            dest: "{{ ci_project_dir }}/{{ destdir }}"
+            state: absent
+        - name: "Creating {{ ci_project_dir }}/{{ destdir }}"
+          file:
+            dest: "{{ ci_project_dir }}/{{ destdir }}"
+            state: directory
+
+    - name: Deploy for all
+      template:
+        src: "{{ item }}.j2"
+        dest: "{{ ci_project_dir }}/{{ destdir }}/{{ item }}"
+      with_items:
+        - deployment.yaml
+        - ingress.yaml
+        - service.yaml
+        - external-secret-giant-database.yaml
+        - external-secret-icts-database.yaml
+        - external-secret-mail-credentials.yaml
+        - external-secret-flyway-database.yaml
+        - external-secret-rds.yaml
+    - name: create env file for dynamic url
+      copy:
+        content: "DYNAMIC_ENVIRONMENT_URL=https://{{ prefix }}.{{ k8s_ingress_domain }}"
+        dest: "{{ ci_project_dir }}/{{ destdir }}/deploy.env"

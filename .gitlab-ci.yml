@@ -1,0 +1,136 @@
+stages:
+  - docker-artifacts
+  - app-build
+  - integrate
+  - docker-build
+  - manifest
+  - gitops
+
+variables:
+  MAVEN_IMAGE: registry.devops.mercuria.systems/gitlab/devops/mercuria-maven:3.8.4-3_jdk17
+  MAVEN_OPTS: "-Dbuildtime.output.log=true -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -XX:+UnlockExperimentalVMOptions -XX:+UseContainerSupport"
+  IMAGE_REPOSITORY: registry.devops.mercuria.systems/gitlab/finance/multiprj
+  DOCKER_REGISTRY: registry.devops.mercuria.systems/gitlab
+  ANSIBLE_FORCE_COLOR: "true"
+
+before_script:
+  - echo "Starting pipeline run for New Giant $CI_BUILD_ID"
+
+include:
+  - template: 'Workflows/MergeRequest-Pipelines.gitlab-ci.yml'
+  - project: 'devops/gitlab-templates'
+    file:
+      - 'docker-build.gitlab-ci.yml'
+      - 'sentry.gitlab-ci.yml'
+      - 'standard-deploy.gitlab-ci.yml'
+      - 'sonarqube-generic-scanner.gitlab-ci.yml'
+
+scan:
+  stage: .post
+  extends: .sonarqube-check
+  script:
+    - sonar-scanner -Dsonar.java.binaries=**/*
+
+
+app-build:
+  stage: app-build
+  image: $MAVEN_IMAGE
+  extends:
+    - .sentry-release
+  before_script:
+    - mkdir -p artifacts
+  script:
+    - set -o xtrace
+    - mkdir -p $CI_PROJECT_DIR/.m2/repository
+    - mvn -B versions:set -DnewVersion=${CI_COMMIT_TAG:-$CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA}
+    - mvn -B -Dsentry.release=$SENTRY_RELEASE verify
+    - cp -R aggregator/target artifacts
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - artifacts
+
+
+maven-integrate:
+  stage: integrate
+  image: $MAVEN_IMAGE
+  artifacts:
+    expire_in: 4 hrs
+    when: always
+    reports:
+      junit:
+        - reports/target/failsafe-reports/TEST-*.xml
+        - reports/target/surefire-reports/TEST-*.xml
+        - processing/target/failsafe-reports/TEST-*.xml
+        - processing/target/surefire-reports/TEST-*.xml
+        - aggregator/target/site/jacoco-aggregate/jacoco.xml
+#        - artifacts/target/site/jacoco-aggregate/site/*.xml
+  before_script:
+    - set -o xtrace
+    - mvn -B versions:set -DnewVersion=${CI_COMMIT_TAG:-$CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA}
+  script:
+    - mvn -B clean verify -P integration
+
+
+docker-build:
+  stage: docker-build
+  extends: .docker-build
+  variables:
+    DOCKER_BUILD_ARGS: "--build-arg buildid=$CI_BUILD_REF_NAME-$CI_PIPELINE_ID"
+  dependencies:
+    - app-build
+    - docker-artifacts
+
+
+sonarqube-check:
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+  stage: .post
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
+    GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script:
+    - echo "GitLab CI/CD | Print all environment variables"
+    - env
+    - echo "***** pwd is "
+    - pwd
+    - echo "${CI_PROJECT_DIR}"
+    - ls ${CI_PROJECT_DIR}
+    - ls ${CI_PROJECT_DIR}/artifacts
+    - ls ${CI_PROJECT_DIR}/artifacts/target/site/jacoco-aggregate
+    - cp -R ./artifacts/target/* ./target
+    - ls ${CI_PROJECT_DIR}/target
+    - sonar-scanner -Droject.settpings=./sonar-project.properties
+
+
+  needs:
+    - job: app-build
+      artifacts: true
+  allow_failure: true
+
+
+.tagged:
+  rules:
+    - if: $CI_COMMIT_TAG
+
+
+# Automatically build release notes.
+release-notes:
+  extends:
+    - .tagged
+  stage: gitops
+  image: registry.devops.mercuria.systems/gitlab/devops/release-notes:${RELEASE_NOTES_TOOL_VERSION}
+  # It doesn't actually need anything, but let's put it as needs so that it doesn't run unless the build is good!
+  needs:
+    - docker-build
+  dependencies: [] # No artifacts needed
+  allow_failure: true # Hopefully won't happen but let's not break the build!
+  variables:
+    # This is the magic JIRA project number, found via inspecting HTTP requests in the JIRA gui.
+    CI_JIRA_PROJECT_ID: 10026
+  script:
+    - release-notes

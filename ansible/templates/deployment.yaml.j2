@@ -1,0 +1,128 @@
+# Source: kyc-persistence/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ prefix }}-app
+  namespace: {{ namespace_name }}
+  labels:
+    app.kubernetes.io/name: {{ prefix }}-app
+    app.kubernetes.io/instance: {{ prefix }}-app
+  annotations:
+    mercuria.met/env: "{{ ci_environment_name }}"
+    mercuria.met/project_name: "{{ ci_project_name }}"
+    mercuria.met/gitlab.project_path_slug: "{{ ci_project_path_slug }}"
+    mercuria.met/gitlab.branch: "{{ ci_commit_ref_slug }}"
+spec:
+  replicas: {{ k8s_deployment_replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ prefix }}-app
+      app.kubernetes.io/instance: {{ prefix }}-app
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ prefix }}-app
+        app.kubernetes.io/instance: {{ prefix }}-app
+      annotations:
+        mercuria.met/env: "{{ ci_environment_name }}"
+        mercuria.met/project_name: "{{ ci_project_name }}"
+        mercuria.met/gitlab.project_path_slug: "{{ ci_project_path_slug }}"
+        mercuria.met/gitlab.branch: "{{ ci_commit_ref_slug }}"
+        mercuria.met/gitlab.commit_ref: "{{ ci_commit_short_sha }}"
+        mercuria.met/gitlab.commit_tag: "{{ ci_commit_tag }}"
+        mercuria.met/gitlab.user_id: "{{ gitlab_user_id }}"
+    spec:
+      containers:
+      - name: app
+        image: registry.devops.mercuria.systems/gitlab/finance/new-giant:{{ image_tag }}
+        imagePullPolicy: Always
+        env:
+          - name: ACTIVE_ENVIRONMENT
+            value: "{{ active_environment }}"
+          - name: JAVA_OPTS
+            value: "{{ java_opts }}"
+          - name: API_TOKEN
+            value: "{{ api_token }}"
+          - name: POD_NAME
+            value: "{{ pod_name }}"
+          - name: GIANT_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ prefix }}-giant-database
+                key: db_username
+          - name: GIANT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ prefix }}-giant-database
+                key: db_password
+          - name: ICTS_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ prefix }}-icts-database
+                key: db_username
+          - name: ICTS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ prefix }}-icts-database
+                key: db_password
+          - name: FLYWAY_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ prefix }}-flyway-database
+                key: db_username
+          - name: FLYWAY_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ prefix }}-flyway-database
+                key: db_password
+          - name: EMAIL_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ prefix }}-mail-credentials
+                key: username
+          - name: EMAIL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ prefix }}-mail-credentials
+                key: password
+          - name: RDS_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ prefix }}-rds
+                key: username
+          - name: RDS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ prefix }}-rds
+                key: password
+        ports:
+          - name: http
+            containerPort:  8080
+            protocol: TCP
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /actuator/health/liveness
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /actuator/health/readiness
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: {{ cpu_limits }}
+            memory: {{ memory_limits }}
+          requests:
+            cpu: {{ cpu_requests }}
+            memory: {{ memory_requests }}

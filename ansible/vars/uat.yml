@@ -1,0 +1,24 @@
+k8s_deployment_replicas: 1
+k8s_ingress_domain: uat.mercuria.systems
+checks_min_replicas: 1
+namespace_name: finance-multiprj
+
+# Override facts.yml
+ci_project_name: finance-multiprj
+
+# Pod resources
+cpu_requests: 200m
+cpu_limits: 2000m
+memory_requests: 4Gi
+memory_limits: 4Gi
+
+# Pod Settings
+active_environment: uat
+java_opts: "-Djava.security.egd=file:/dev/./urandom -XX:+UseContainerSupport -Xms3000M -Xmx4G -XX:+UseG1GC -XX:+UseStringDeduplication -XX:+HeapDumpOnOutOfMemoryError"
+api_token: "zhgMtQUpKKsKqsenja9W"
+pod_name: metadata.name
+
+# Secrets
+secrets_namespace: finance-multiprj
+vault_mount_point: tz-uat-01
+secrets_environment: uat

@@ -1,0 +1,26 @@
+k8s_deployment_replicas: 1
+k8s_ingress_domain: dev.mercuria.systems
+namespace_name: finance-multiprj
+checks_min_replicas: 1
+
+# Override facts.yml
+ci_project_name: finance-multiprj
+ci_environment_name: dev
+image_tag: latest
+
+# Pod resources
+cpu_requests: 200m
+cpu_limits: 2000m
+memory_requests: 2Gi
+memory_limits: 2Gi
+
+# Pod Settings
+active_environment: dev
+java_opts: "-Xmx1G -XX:+UseG1GC -XX:+UseStringDeduplication -XX:+HeapDumpOnOutOfMemoryError"
+api_token: "zhgMtQUpKKsKqsenja9W"
+pod_name: metadata.name
+
+# Secrets
+secrets_namespace: finance-multiprj
+vault_mount_point: tz-dev-01
+secrets_environment: dev

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ prefix }}-app
+  namespace: {{ namespace_name }}
+  labels:
+    app.kubernetes.io/name: {{ prefix }}-app
+    app.kubernetes.io/instance: {{ prefix }}-app
+  annotations:
+    mercuria.met/env: "{{ ci_environment_name }}"
+    mercuria.met/project_name: "{{ ci_project_name }}"
+    mercuria.met/gitlab.project_path_slug: "{{ ci_project_path_slug }}"
+    mercuria.met/gitlab.branch: "{{ ci_commit_ref_slug }}"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ prefix }}-app
+    app.kubernetes.io/instance: {{ prefix }}-app

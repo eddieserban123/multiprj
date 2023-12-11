@@ -1,0 +1,9 @@
+#IntelliJ generate project files
+.idea/*
+*.iml
+*/target
+
+#Log files
+/*.log
+/*.log.zip
+/.project
